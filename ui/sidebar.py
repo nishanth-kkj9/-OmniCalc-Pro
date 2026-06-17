@@ -1,39 +1,123 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QToolButton, QLabel
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QToolButton, QLabel, QPushButton, QFrame
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QRect
+from PySide6.QtGui import QFont
 
 PAGE_NAMES = ["Dashboard", "Basic", "Scientific", "Graph", "Converter", "Programmer", "Matrix", "Statistics", "Finance", "History", "Settings"]
-ICONS = ["\U0001f3e0", "\U0001f522", "\U0001f52c", "\U0001f4c8", "\U0001f504", "\U0001f4bb", "\U0001f532", "\U0001f4ca", "\U0001f4b0", "\U0001f552", "\U00002699"]
+
+SIDE_ICONS = ["\U0001f3e0", "\U0001f522", "\U0001f52c", "\U0001f4c8", "\U0001f504", "\U0001f4bb", "\U0001f532", "\U0001f4ca", "\U0001f4b0", "\U0001f552", "\u2699"]
+
+COLLAPSED_WIDTH = 64
+EXPANDED_WIDTH = 200
+
 
 class Sidebar(QWidget):
     page_changed = Signal(int)
-    
+
     def __init__(self):
         super().__init__()
+        self._expanded = True
         self.btn_list = []
         self.setup_ui()
 
     def setup_ui(self):
-        self.setFixedWidth(90)
-        self.setStyleSheet("background-color: #15151e; border-right: 1px solid #252535;")
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 20, 0, 15)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        
+        self.setFixedWidth(EXPANDED_WIDTH)
+        self.setStyleSheet("""
+            Sidebar {
+                background-color: #15151e;
+                border-right: 1px solid #252535;
+            }
+        """)
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 12, 0, 12)
+        self.layout.setSpacing(4)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        header = QLabel("\U0001f4ca  OmniCalc")
+        header.setStyleSheet("color: #00ffaa; font-size: 16px; font-weight: bold; padding: 8px 12px;")
+        self.layout.addWidget(header)
+
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setStyleSheet("color: #252535; margin: 4px 8px;")
+        self.layout.addWidget(separator)
+
         for i, name in enumerate(PAGE_NAMES):
             btn = QToolButton()
             btn.setToolTip(name)
-            btn.setText(ICONS[i])
-            
+            btn.setText(f"  {SIDE_ICONS[i]}  {name}")
+            btn.setMinimumHeight(44)
+            btn.setMaximumWidth(EXPANDED_WIDTH)
+
             f = btn.font()
-            f.setPointSize(22)
+            f.setPointSize(11)
             btn.setFont(f)
-            
-            btn.setFixedSize(60, 60)
+
             btn.setStyleSheet("""
-                QToolButton { border-radius: 14px; background: transparent; color: #888; }
-                QToolButton:hover { background: #1e1e2e; color: #fff; }
+                QToolButton {
+                    border-radius: 10px;
+                    background: transparent;
+                    color: #888;
+                    text-align: left;
+                    padding: 0 10px;
+                }
+                QToolButton:hover {
+                    background: #1e1e2e;
+                    color: #fff;
+                }
             """)
             btn.clicked.connect(lambda _, idx=i: self.page_changed.emit(idx))
             self.btn_list.append(btn)
-            layout.addWidget(btn)
-        layout.addStretch()
+            self.layout.addWidget(btn)
+
+        self.layout.addStretch()
+
+        self.collapse_btn = QPushButton("\u25c0")
+        self.collapse_btn.setFixedSize(36, 36)
+        self.collapse_btn.setToolTip("Collapse sidebar")
+        self.collapse_btn.setStyleSheet("""
+            QPushButton {
+                border-radius: 10px;
+                background: transparent;
+                color: #666;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background: #1e1e2e;
+                color: #fff;
+            }
+        """)
+        self.collapse_btn.clicked.connect(self.toggle_expand)
+        self.layout.addWidget(self.collapse_btn, 0, Qt.AlignmentFlag.AlignCenter)
+
+        self.animation_group = QParallelAnimationGroup()
+
+    def toggle_expand(self):
+        self._expanded = not self._expanded
+        target_width = EXPANDED_WIDTH if self._expanded else COLLAPSED_WIDTH
+
+        self.animation_group.stop()
+        self.animation_group.clear()
+
+        anim = QPropertyAnimation(self, b"fixedWidth", self)
+        anim.setDuration(200)
+        anim.setStartValue(self.width())
+        anim.setEndValue(target_width)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.finished.connect(self._on_animation_done)
+        self.animation_group.addAnimation(anim)
+        self.animation_group.start()
+
+        for btn in self.btn_list:
+            if self._expanded:
+                idx = self.btn_list.index(btn)
+                btn.setText(f"  {SIDE_ICONS[idx]}  {PAGE_NAMES[idx]}")
+            else:
+                idx = self.btn_list.index(btn)
+                btn.setText(f"  {SIDE_ICONS[idx]}")
+
+        self.collapse_btn.setText("\u25b6" if not self._expanded else "\u25c0")
+        self.collapse_btn.setToolTip("Expand sidebar" if not self._expanded else "Collapse sidebar")
+
+    def _on_animation_done(self):
+        pass

@@ -6,14 +6,12 @@ No code execution possible - only mathematical expressions.
 """
 import math
 import re
-from typing import Any
 
-from sympy import sympify, SympifyError
+from sympy import SympifyError, Basic
 from sympy.parsing.sympy_parser import (
     parse_expr,
     standard_transformations,
     implicit_multiplication_application,
-    function_exponentiation,
     convert_xor,
 )
 
@@ -83,16 +81,16 @@ RADIAN_FUNCTIONS = {
     "gamma": math.gamma,
 }
 
+# Remove function_exponentiation as it splits function names incorrectly
 TRANSFORMATIONS = (
     standard_transformations
     + (implicit_multiplication_application,)
-    + (function_exponentiation,)
     + (convert_xor,)
 )
 
 _UNICODE_MAP = {
     "×": "*", "÷": "/", "−": "-", "–": "-",
-    "·": "*", "·": "*", "√": "sqrt",
+    "·": "*", "·": "*", "√": "sqrt(",
     "π": "pi", "τ": "tau", "∞": "inf",
     "²": "**2", "³": "**3", "ⁿ": "**",
     "±": "+-", "∓": "-+",
@@ -101,6 +99,9 @@ _UNICODE_MAP = {
 }
 
 _NUMBER_RE = re.compile(r"\b(\d+)(\.\d*)?\b")
+
+# Known function names to protect from implicit multiplication splitting
+_PROTECTED_FUNCTIONS = set(SAFE_FUNCTIONS) | {"factorial"}
 
 
 class SafeEvaluator:
@@ -133,31 +134,74 @@ class SafeEvaluator:
         if not expr:
             raise ValueError("Empty expression")
 
+        # Handle √ before unicode replacement (needs closing paren)
+        expr = re.sub(r"√\(([^()]*(?:\([^()]*\)[^()]*)*)\)", r"sqrt(\1)", expr)
+        expr = re.sub(r"√(\d+\.?\d*)", r"sqrt(\1)", expr)
+        expr = re.sub(r"√([a-zA-Zα-ωπτ]+)", r"sqrt(\1)", expr)
+
         for k, v in _UNICODE_MAP.items():
+            if k == "√":
+                continue
             expr = expr.replace(k, v)
 
+        # 1. Protect scientific notation (e.g. 1e3) from implicit multiplication
+        sci_placeholders = {}
+        def _protect_sci(m):
+            orig = m.group(0)
+            key = f"__SCI_{len(sci_placeholders)}__"
+            sci_placeholders[key] = orig
+            return key
+        expr = re.sub(r"\b(\d+(?:\.\d+)?)[eE]([+-]?\d+)\b", _protect_sci, expr)
+
+        # 2. Protect function names from implicit multiplication splitting
+        func_placeholders = {}
+        for func in sorted(_PROTECTED_FUNCTIONS, key=len, reverse=True):
+            placeholder = f"__FUNC_{func}__"
+            func_placeholders[placeholder] = func
+            pattern = re.compile(rf"\b{re.escape(func)}(?=[\(a-zA-Z0-9])")
+            expr = pattern.sub(placeholder, expr)
+
+        # 3. Apply implicit multiplication
         expr = re.sub(r"(\d)([a-zA-Z\(])", r"\1*\2", expr)
         expr = re.sub(r"(\))(?=[\d\(a-zA-Z])", r"\1*", expr)
 
-        expr = re.sub(r"([+\-*/])\1+", r"\1", expr)
+        # 4. Restore function names
+        for placeholder, func in func_placeholders.items():
+            expr = expr.replace(placeholder, func)
+
+        # 5. Restore scientific notation
+        for key, orig in sci_placeholders.items():
+            expr = expr.replace(key, orig)
+
+        # 6. Cleanup: only collapse 3+ repeats (preserve **, ++, --, //)
+        expr = re.sub(r"([+\-*/])\1\1+", r"\1\1", expr)
         expr = re.sub(r"\*\*+", "**", expr)
 
         return expr
 
     def _validate_ast(self, expr: str) -> None:
-        tree = parse_expr(expr, transformations=TRANSFORMATIONS, evaluate=False)
+        for token in re.findall(r'\b[a-zA-Z_]\w*\b', expr):
+            if token not in self._namespace and token not in SAFE_CONSTANTS:
+                raise ValueError(f"Unknown identifier: {token}")
 
-        for node in tree.atoms():
-            if node.is_Symbol:
-                name = str(node)
-                if name not in self._namespace and name not in SAFE_CONSTANTS:
-                    raise ValueError(f"Unknown identifier: {name}")
+    def _is_number_result(self, result: Any) -> bool:
+        """Check if result is a number (sympy Number or Python numeric type)."""
+        if isinstance(result, (int, float, complex)):
+            return True
+        if isinstance(result, Basic):
+            return result.is_number
+        return False
 
-        for func in tree.atoms():
-            if func.is_Function:
-                fname = func.func.__name__
-                if fname not in SAFE_FUNCTIONS:
-                    raise ValueError(f"Function not allowed: {fname}")
+    def _convert_to_float(self, result: Any) -> float:
+        """Convert result to float, handling both sympy and Python types."""
+        if isinstance(result, (int, float)):
+            return float(result)
+        if isinstance(result, Basic):
+            return float(result.evalf())
+        if isinstance(result, complex):
+            if result.imag == 0:
+                return float(result.real)
+        raise ValueError("Result is not a real number")
 
     def evaluate(self, expr: str) -> float:
         try:
@@ -166,13 +210,13 @@ class SafeEvaluator:
 
             result = parse_expr(expr, transformations=TRANSFORMATIONS, local_dict=self._namespace, evaluate=True)
 
-            if result.is_number:
-                val = float(result)
-                if math.isinf(val) or math.isnan(val):
-                    raise ValueError("Result is infinite or NaN")
-                return val
+            if not self._is_number_result(result):
+                raise ValueError("Result is not a number")
 
-            raise ValueError("Result is not a number")
+            val = self._convert_to_float(result)
+            if math.isinf(val) or math.isnan(val):
+                raise ValueError("Result is infinite or NaN")
+            return val
 
         except SympifyError as e:
             logger.warning(f"Parse error: {expr} -> {e}")

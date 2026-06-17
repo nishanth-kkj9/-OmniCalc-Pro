@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QStackedWidget, QLabel, QPushButton, QHBoxLayout, QApplication, QSystemTrayIcon, QMenu
-from PySide6.QtCore import Qt, QPoint, QTimer, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Qt, QPoint, QTimer, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QRect
 from PySide6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QAction
 from ui.sidebar import Sidebar
 from ui.widgets import CalcButton, DisplayPanel
-from utils.themes import apply_theme
+from ui.fluent_theme import get_theme
 from utils.helpers import load_config, save_config
 from utils.logger import get_logger
 from core.history_manager import get_history_manager
@@ -108,6 +108,32 @@ class CustomTitleBar(QWidget):
         self.dragging = False
 
 
+class FadeStackedWidget(QStackedWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._fade_anim = QPropertyAnimation(self, b"windowOpacity", self)
+        self._fade_anim.setDuration(120)
+        self._fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._fade_anim.finished.connect(self._on_fade_done)
+        self._pending_idx = -1
+
+    def fade_to(self, idx: int):
+        if idx == self.currentIndex():
+            return
+        self._pending_idx = idx
+        self._fade_anim.setStartValue(1.0)
+        self._fade_anim.setEndValue(0.0)
+        self._fade_anim.start()
+
+    def _on_fade_done(self):
+        if self._pending_idx >= 0:
+            self.setCurrentIndex(self._pending_idx)
+            self._fade_anim.setStartValue(0.0)
+            self._fade_anim.setEndValue(1.0)
+            self._fade_anim.start()
+            self._pending_idx = -1
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -116,30 +142,30 @@ class MainWindow(QMainWindow):
         self.resize(1150, 800)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        
+
         main_widget = QWidget()
         main_widget.setObjectName("main_bg")
         self.setCentralWidget(main_widget)
         v_layout = QVBoxLayout(main_widget)
         v_layout.setSpacing(0)
-        v_layout.setContentsMargins(0,0,0,0)
-        
+        v_layout.setContentsMargins(0, 0, 0, 0)
+
         self.title_bar = CustomTitleBar(self)
         v_layout.addWidget(self.title_bar)
-        
+
         content = QWidget()
         c_layout = QHBoxLayout(content)
         c_layout.setSpacing(0)
-        c_layout.setContentsMargins(0,0,0,0)
-        
+        c_layout.setContentsMargins(0, 0, 0, 0)
+
         self.sidebar = Sidebar()
         self.sidebar.page_changed.connect(self.switch_page)
         c_layout.addWidget(self.sidebar)
-        
-        self.stack = QStackedWidget()
+
+        self.stack = FadeStackedWidget()
         c_layout.addWidget(self.stack, 1)
         v_layout.addWidget(content)
-        
+
         self.page_factories = [
             ("Dashboard", lambda: __import__("ui.dashboard", fromlist=["DashboardPage"]).DashboardPage()),
             ("Basic", lambda: __import__("ui.basic_page", fromlist=["BasicPage"]).BasicPage(self.config)),
@@ -156,7 +182,7 @@ class MainWindow(QMainWindow):
         self.pages_created = [False] * len(self.page_factories)
         self.current_idx = -1
         self._create_page(0)
-        self.sidebar.btn_list[0].setStyleSheet("QToolButton { background: #2a2a35; color: #00ffaa; }")
+        self._update_sidebar_active(0)
         self.title_bar.status_lbl.setText("  OmniCalc Pro | Ready")
         logger.info("MainWindow initialization complete.")
 
@@ -166,34 +192,33 @@ class MainWindow(QMainWindow):
         logger.debug("Registered database cleanup on exit.")
 
         self._setup_tray()
+        self._register_shortcuts()
+
+    def _register_shortcuts(self):
+        from PySide6.QtGui import QShortcut, QKeySequence
+        for i in range(min(11, len(self.page_factories))):
+            shortcut = QShortcut(QKeySequence(f"Ctrl+{i+1}"), self)
+            shortcut.activated.connect(lambda idx=i: self.switch_page(idx))
 
     def _setup_tray(self):
         self.tray = QSystemTrayIcon(self)
-
         pixmap = QPixmap(32, 32)
         pixmap.fill(QColor(0, 255, 170))
         self.tray.setIcon(QIcon(pixmap))
-
         tray_menu = QMenu()
-
         show_action = QAction("Show OmniCalc", self)
         show_action.triggered.connect(self.show)
         tray_menu.addAction(show_action)
-
         self.pin_action = QAction("Pin on Top", self)
         self.pin_action.triggered.connect(self._toggle_pin)
         tray_menu.addAction(self.pin_action)
-
         tray_menu.addSeparator()
-
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self._quit_app)
         tray_menu.addAction(quit_action)
-
         self.tray.setContextMenu(tray_menu)
         self.tray.setToolTip("OmniCalc Pro")
         self.tray.show()
-
         self.tray.activated.connect(self._trayActivated)
 
     def _toggle_pin(self):
@@ -231,11 +256,14 @@ class MainWindow(QMainWindow):
         if not self.pages_created[idx]:
             self.title_bar.status_lbl.setText(f"  OmniCalc Pro | Loading {self.page_factories[idx][0]}...")
             self._create_page(idx)
-        self.stack.setCurrentIndex(idx)
-        logger.info(f"Navigation: Switched to {self.page_factories[idx][0]} (Index {idx})")
+        self.stack.fade_to(idx)
+        self._update_sidebar_active(idx)
+        logger.info(f"Navigated to {self.page_factories[idx][0]} (Index {idx})")
+        self.title_bar.status_lbl.setText("  OmniCalc Pro | Ready")
+
+    def _update_sidebar_active(self, idx):
         for i, btn in enumerate(self.sidebar.btn_list):
             btn.setStyleSheet("QToolButton { background: transparent; color: #aaa; }" if i != idx else "QToolButton { background: #2a2a35; color: #00ffaa; }")
-        self.title_bar.status_lbl.setText("  OmniCalc Pro | Ready")
 
     def _create_page(self, idx):
         page = self.page_factories[idx][1]()
@@ -249,11 +277,9 @@ class MainWindow(QMainWindow):
         self.config = cfg
         save_config(cfg)
         logger.info(f"Settings updated: Theme={cfg.get('theme')}, FontSize={cfg.get('font_size')}")
-        QTimer.singleShot(0, lambda: self._apply_theme_async(cfg))
-
-    def _apply_theme_async(self, cfg):
         app = QApplication.instance()
         if app:
-            apply_theme(app, cfg.get("theme", "dark"))
+            theme = get_theme(app)
+            theme.apply(cfg.get("theme", "dark"))
             app.setFont(QFont("Segoe UI", cfg.get("font_size", 14)))
             self.title_bar.status_lbl.setText("  OmniCalc Pro | Theme Updated")

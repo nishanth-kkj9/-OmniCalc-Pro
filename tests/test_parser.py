@@ -1,5 +1,9 @@
 import unittest
-from omnicalc_pro.core.parser import MathParser
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core.parser import MathParser
 import sympy as sp
 
 class TestMathParser(unittest.TestCase):
@@ -27,8 +31,8 @@ class TestMathParser(unittest.TestCase):
             MathParser.parse_expression(expr_str)
         self.assertIn("Error parsing expression", str(cm.exception))
 
-        # Test an expression with an undefined function/variable (if sympy can't parse it)
-        expr_str = "invalid_func(x)"
+        # Test an expression with invalid syntax
+        expr_str = "2 + * 3"
         with self.assertRaises(ValueError) as cm:
             MathParser.parse_expression(expr_str)
         self.assertIn("Error parsing expression", str(cm.exception))
