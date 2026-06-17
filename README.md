@@ -45,17 +45,17 @@
 git clone https://github.com/nishanth-kkj9/-OmniCalc-Pro.git
 cd OmniCalc-Pro
 
-# Install dependencies
+# Install runtime dependencies
 pip install -r requirements.txt
 
 # Run the application
 python main.py
 ```
 
-### Development dependencies
+### Development installation
 
 ```bash
-pip install -r requirements.txt  # includes pytest, ruff, mypy
+pip install -e ".[dev]"          # includes pytest, ruff, mypy
 ```
 
 ---

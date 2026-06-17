@@ -197,10 +197,15 @@ class SafeEvaluator:
 
         return expr
 
-    def _validate_ast(self, expr: str) -> None:
+    def _validate_ast(self, expr: str, allow_vars: bool = False) -> None:
         for token in re.findall(r'\b[a-zA-Z_]\w*\b', expr):
-            if token not in self._namespace and token not in SAFE_CONSTANTS:
-                raise ValueError(f"Unknown identifier: {token}")
+            if token in self._namespace:
+                continue
+            if token in SAFE_CONSTANTS:
+                continue
+            if allow_vars and len(token) == 1 and token.isalpha():
+                continue
+            raise ValueError(f"Unknown identifier: {token}")
 
     def _is_number_result(self, result: Any) -> bool:
         """Check if result is a number (sympy Number or Python numeric type)."""
@@ -221,26 +226,30 @@ class SafeEvaluator:
                 return float(result.real)
         raise ValueError("Result is not a real number")
 
+    def _prevalidate(self, expr: str, allow_vars: bool = False) -> str:
+        """Run common pre-validation (length, nesting, identifiers). Returns normalized expression."""
+        expr = self._normalize(expr)
+        self._check_nesting_depth(expr)
+        self._validate_ast(expr, allow_vars=allow_vars)
+        return expr
+
     def evaluate(self, expr: str) -> float:
+        _timer = None
         try:
-            expr = self._normalize(expr)
-            self._check_nesting_depth(expr)
-            self._validate_ast(expr)
+            expr = self._prevalidate(expr)
 
             self._timed_out = False
 
-            def _timeout_monitor():
-                timer = threading.Timer(self.max_time, self._set_timeout)
-                timer.daemon = True
-                timer.start()
-
-            def _run():
-                return parse_expr(expr, transformations=TRANSFORMATIONS, local_dict=self._namespace, evaluate=True)
+            def _start_timer():
+                t = threading.Timer(self.max_time, self._set_timeout)
+                t.daemon = True
+                t.start()
+                return t
 
             if self.max_time > 0:
-                _timeout_monitor()
+                _timer = _start_timer()
 
-            result = _run()
+            result = parse_expr(expr, transformations=TRANSFORMATIONS, local_dict=self._namespace, evaluate=True)
 
             if self._timed_out:
                 raise TimeoutError(f"Evaluation exceeded {self.max_time}s limit")
@@ -267,6 +276,9 @@ class SafeEvaluator:
         except Exception as e:
             logger.error(f"Evaluation error: {expr} -> {e}")
             raise ValueError(f"Evaluation failed: {e}")
+        finally:
+            if _timer is not None:
+                _timer.cancel()
 
     def evaluate_safe(self, expr: str) -> float | str:
         try:
@@ -278,24 +290,64 @@ class SafeEvaluator:
 
     def parse_expression(self, expr: str):
         try:
-            expr = expr.replace('^', '**')
+            expr = self._prevalidate(expr.replace('^', '**'), allow_vars=True)
             return sp.sympify(expr, evaluate=False)
+        except SympifyError as e:
+            raise ValueError(f"Error parsing expression: {e}") from e
+        except ValueError:
+            raise
         except Exception as e:
-            raise ValueError(f"Error parsing expression: {e}")
+            raise ValueError(f"Error parsing expression: {e}") from e
 
     def to_latex(self, expr) -> str:
         return sp.latex(expr)
 
     def solve(self, expr, variable: str = 'x'):
-        x = sp.Symbol(variable)
-        eq = sp.sympify(expr)
-        return sp.solve(eq, x)
+        try:
+            expr = self._prevalidate(expr, allow_vars=True)
+            x = sp.Symbol(variable)
+            eq = sp.sympify(expr)
+            return sp.solve(eq, x)
+        except SympifyError as e:
+            raise ValueError(f"Error solving expression: {e}") from e
+        except ValueError:
+            raise
+        except Exception as e:
+            raise ValueError(f"Error solving expression: {e}") from e
 
     def _set_timeout(self):
         self._timed_out = True
 
 
 _default_evaluator = SafeEvaluator()
+
+
+def validate_expression(expr: str, allow_vars: bool = False) -> str:
+    """Validate an expression against the SAFE_FUNCTIONS/SAFE_CONSTANTS allowlist.
+
+    Args:
+        expr: The expression string to validate.
+        allow_vars: If True, allow identifiers like 'x' (for graphing).
+
+    Returns:
+        The normalized expression string.
+
+    Raises:
+        ValueError: If the expression contains unknown or disallowed identifiers.
+    """
+    expr = _default_evaluator._normalize(expr)
+    _default_evaluator._check_nesting_depth(expr)
+
+    for token in re.findall(r'\b[a-zA-Z_]\w*\b', expr):
+        if token in _default_evaluator._namespace:
+            continue
+        if token in SAFE_CONSTANTS:
+            continue
+        if allow_vars and len(token) == 1 and token.isalpha():
+            continue
+        raise ValueError(f"Unknown identifier: {token}")
+
+    return expr
 
 
 def safe_eval(expression: str, angle_mode: str = "degrees") -> float | str:
