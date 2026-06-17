@@ -88,9 +88,11 @@ class BasicPage(QWidget):
                 self.history_db.add_entry(self.expression, str(res))
                 logger.info(f"Result: {res}")
                 self.expression = str(res)
+                self.display.flash_result(success=True)
             except Exception as e:
                 logger.warning(f"Calc failed: {e}")
                 self.expression = "Error"
+                self.display.flash_result(success=False)
         elif t == "x\u00b2":
             self.expression += "^2"
         elif t == "\u221a":

@@ -1,5 +1,5 @@
-from PySide6.QtWidgets import QPushButton, QLineEdit, QMenu, QWidget, QLabel, QHBoxLayout
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QRect
+from PySide6.QtWidgets import QPushButton, QLineEdit, QMenu, QWidget, QLabel, QHBoxLayout, QGraphicsOpacityEffect
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QRect, QParallelAnimationGroup
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QFont
 from utils.helpers import copy_to_clipboard, paste_from_clipboard
 
@@ -62,6 +62,54 @@ class CalcButton(QPushButton):
         self.setMinimumSize(52, 44)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setStyleSheet(BUTTON_STYLES.get(style_class, BUTTON_STYLES[""]))
+        self._press_animation = None
+        self._setup_animations()
+
+    def _setup_animations(self):
+        self._scale_anim = QPropertyAnimation(self, b"geometry")
+        self._scale_anim.setDuration(80)
+        self._scale_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
+
+        self._opacity_effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self._opacity_effect)
+        self._opacity_anim = QPropertyAnimation(self._opacity_effect, b"opacity")
+        self._opacity_anim.setDuration(100)
+        self._opacity_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
+
+        self.pressed.connect(self._on_pressed)
+        self.released.connect(self._on_released)
+
+    def _on_pressed(self):
+        self._scale_anim.stop()
+        rect = self.geometry()
+        scaled_rect = QRect(
+            rect.x() + 2, rect.y() + 2,
+            rect.width() - 4, rect.height() - 4
+        )
+        self._scale_anim.setStartValue(rect)
+        self._scale_anim.setEndValue(scaled_rect)
+        self._scale_anim.start()
+
+        self._opacity_anim.stop()
+        self._opacity_anim.setStartValue(1.0)
+        self._opacity_anim.setEndValue(0.8)
+        self._opacity_anim.start()
+
+    def _on_released(self):
+        self._scale_anim.stop()
+        rect = self.geometry()
+        original_rect = QRect(
+            rect.x() - 2, rect.y() - 2,
+            rect.width() + 4, rect.height() + 4
+        )
+        self._scale_anim.setStartValue(rect)
+        self._scale_anim.setEndValue(original_rect)
+        self._scale_anim.start()
+
+        self._opacity_anim.stop()
+        self._opacity_anim.setStartValue(0.8)
+        self._opacity_anim.setEndValue(1.0)
+        self._opacity_anim.start()
 
 
 class DisplayPanel(QLineEdit):
@@ -84,6 +132,35 @@ class DisplayPanel(QLineEdit):
         """)
         self.setMinimumHeight(80)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        self._flash_animation = None
+        self._original_style = self.styleSheet()
+
+    def flash_result(self, success=True):
+        """Flash the display with success/error color."""
+        if self._flash_animation:
+            self._flash_animation.stop()
+
+        flash_color = "#00cc66" if success else "#e81123"
+        original_border = "2px solid #2a2a35"
+        flash_border = f"2px solid {flash_color}"
+
+        self._flash_animation = QPropertyAnimation(self, b"styleSheet")
+        self._flash_animation.setDuration(150)
+        self._flash_animation.setStartValue(self._original_style.replace(original_border, flash_border))
+        self._flash_animation.setEndValue(self._original_style)
+        self._flash_animation.setEasingCurve(QEasingCurve.Type.OutQuad)
+        self._flash_animation.start()
+
+        # Also animate text color
+        self._color_effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self._color_effect)
+        self._color_anim = QPropertyAnimation(self._color_effect, b"opacity")
+        self._color_anim.setDuration(100)
+        self._color_anim.setStartValue(1.0)
+        self._color_anim.setEndValue(0.5)
+        self._color_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
+        self._color_anim.finished.connect(lambda: self._color_anim.setDirection(QPropertyAnimation.Direction.Backward) or self._color_anim.start())
+        self._color_anim.start()
 
 
 class AnimatedButton(QPushButton):

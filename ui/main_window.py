@@ -1,9 +1,11 @@
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QStackedWidget, QLabel, QPushButton, QHBoxLayout, QApplication, QSystemTrayIcon, QMenu
 from PySide6.QtCore import Qt, QPoint, QTimer, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QRect
-from PySide6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QAction
+from PySide6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QAction, QKeySequence, QShortcut
 from ui.sidebar import Sidebar
 from ui.widgets import CalcButton, DisplayPanel
 from ui.fluent_theme import get_theme
+from ui.win11_effects import apply_windows11_effects
+from ui.toast import show_toast, ToastType
 from utils.helpers import load_config, save_config
 from utils.logger import get_logger
 from core.history_manager import get_history_manager
@@ -143,6 +145,8 @@ class MainWindow(QMainWindow):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
+        self._win11_effects = apply_windows11_effects(self, backdrop="mica", dark_mode=True, rounded_corners=True)
+
         main_widget = QWidget()
         main_widget.setObjectName("main_bg")
         self.setCentralWidget(main_widget)
@@ -195,10 +199,77 @@ class MainWindow(QMainWindow):
         self._register_shortcuts()
 
     def _register_shortcuts(self):
-        from PySide6.QtGui import QShortcut, QKeySequence
-        for i in range(min(11, len(self.page_factories))):
-            shortcut = QShortcut(QKeySequence(f"Ctrl+{i+1}"), self)
+        # Page navigation shortcuts (Ctrl+1 through Ctrl+0)
+        for i in range(min(10, len(self.page_factories))):
+            key = f"Ctrl+{i+1}" if i < 9 else "Ctrl+0"
+            shortcut = QShortcut(QKeySequence(key), self)
             shortcut.activated.connect(lambda idx=i: self.switch_page(idx))
+
+        # Theme toggle
+        theme_shortcut = QShortcut(QKeySequence("Ctrl+T"), self)
+        theme_shortcut.activated.connect(self._toggle_theme)
+
+        # Copy result
+        copy_shortcut = QShortcut(QKeySequence("Ctrl+C"), self)
+        copy_shortcut.activated.connect(self._copy_result)
+
+        # Paste result
+        paste_shortcut = QShortcut(QKeySequence("Ctrl+V"), self)
+        paste_shortcut.activated.connect(self._paste_input)
+
+        # Clear/Escape
+        clear_shortcut = QShortcut(QKeySequence("Escape"), self)
+        clear_shortcut.activated.connect(self._clear_current_page)
+
+        # Fullscreen
+        fullscreen_shortcut = QShortcut(QKeySequence("F11"), self)
+        fullscreen_shortcut.activated.connect(self._toggle_fullscreen)
+
+    def _toggle_theme(self):
+        app = QApplication.instance()
+        if app:
+            theme = get_theme(app)
+            new_theme = "light" if theme.theme_name == "dark" else "dark"
+            theme.apply(new_theme)
+            self.config["theme"] = new_theme
+            save_config(self.config)
+            show_toast(self, f"Theme switched to {new_theme}", ToastType.INFO, 2000)
+
+    def _copy_result(self):
+        current_page = self.stack.currentWidget()
+        if hasattr(current_page, 'copy_result'):
+            current_page.copy_result()
+            show_toast(self, "Result copied to clipboard", ToastType.SUCCESS, 1500)
+        elif hasattr(current_page, 'display'):
+            text = current_page.display.text()
+            if text:
+                from utils.helpers import copy_to_clipboard
+                copy_to_clipboard(text)
+                show_toast(self, "Copied to clipboard", ToastType.SUCCESS, 1500)
+
+    def _paste_input(self):
+        current_page = self.stack.currentWidget()
+        if hasattr(current_page, 'paste_input'):
+            current_page.paste_input()
+        elif hasattr(current_page, 'display'):
+            from utils.helpers import paste_from_clipboard
+            text = paste_from_clipboard()
+            if text:
+                current_page.display.setText(text)
+                show_toast(self, "Pasted from clipboard", ToastType.INFO, 1500)
+
+    def _clear_current_page(self):
+        current_page = self.stack.currentWidget()
+        if hasattr(current_page, 'clear_expression'):
+            current_page.clear_expression()
+        elif hasattr(current_page, 'display'):
+            current_page.display.clear()
+
+    def _toggle_fullscreen(self):
+        if self.isFullScreen():
+            self.showNormal()
+        else:
+            self.showFullScreen()
 
     def _setup_tray(self):
         self.tray = QSystemTrayIcon(self)
