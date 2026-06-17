@@ -1,7 +1,8 @@
-# Calculator engine logic
+from typing import Union
+from utils.helpers import safe_eval
+
+
 class BasicEngine:
     @staticmethod
-    def calculate(expr, angle_mode="degrees"):
-        # Delegates to helper safe_eval
-        from utils.helpers import safe_eval
+    def calculate(expr: str, angle_mode: str = "degrees") -> Union[float, str]:
         return safe_eval(expr, angle_mode)

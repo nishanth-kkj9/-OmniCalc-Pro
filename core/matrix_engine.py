@@ -1,10 +1,10 @@
-# Matrix calculator logic
 import numpy as np
+import numpy.typing as npt
+
 
 class MatrixEngine:
     @staticmethod
-    def parse(text):
-        # Expects "1,2;3,4" format
+    def parse(text: str) -> npt.NDArray[np.float64]:
         rows = text.split(';')
         mat = []
         for r in rows:
@@ -12,14 +12,25 @@ class MatrixEngine:
         return np.array(mat)
 
     @staticmethod
-    def add(a, b): return a + b
+    def add(a: npt.NDArray, b: npt.NDArray) -> npt.NDArray:
+        return a + b
+
     @staticmethod
-    def sub(a, b): return a - b
+    def sub(a: npt.NDArray, b: npt.NDArray) -> npt.NDArray:
+        return a - b
+
     @staticmethod
-    def mul(a, b): return np.dot(a, b)
+    def mul(a: npt.NDArray, b: npt.NDArray) -> npt.NDArray:
+        return np.dot(a, b)
+
     @staticmethod
-    def det(a): return np.linalg.det(a)
+    def det(a: npt.NDArray) -> float:
+        return np.linalg.det(a)
+
     @staticmethod
-    def inv(a): return np.linalg.inv(a)
+    def inv(a: npt.NDArray) -> npt.NDArray:
+        return np.linalg.inv(a)
+
     @staticmethod
-    def trans(a): return a.T
+    def trans(a: npt.NDArray) -> npt.NDArray:
+        return a.T

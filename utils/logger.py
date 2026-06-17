@@ -3,16 +3,14 @@ import os
 import sys
 from utils.constants import BASE_DIR
 
-LOG_FILE = os.path.join(BASE_DIR, 'omnicalc_pro.log')
+LOG_FILE: str = os.path.join(BASE_DIR, 'omnicalc_pro.log')
 
-def setup_logger():
-    """Configure global application logger."""
+
+def setup_logger() -> logging.Logger:
     logger = logging.getLogger("OmniCalcPro")
     logger.setLevel(logging.DEBUG)
 
-    # Prevent duplicate handlers on multiple imports
     if not logger.handlers:
-        # File Handler (captures all logs)
         file_handler = logging.FileHandler(LOG_FILE, mode='a', encoding='utf-8')
         file_handler.setLevel(logging.DEBUG)
         file_fmt = logging.Formatter(
@@ -22,7 +20,6 @@ def setup_logger():
         file_handler.setFormatter(file_fmt)
         logger.addHandler(file_handler)
 
-        # Console Handler (shows INFO+ in terminal)
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.INFO)
         console_fmt = logging.Formatter('%(levelname)-8s | %(message)s')
@@ -31,5 +28,6 @@ def setup_logger():
 
     return logger
 
-def get_logger():
+
+def get_logger() -> logging.Logger:
     return logging.getLogger("OmniCalcPro")
