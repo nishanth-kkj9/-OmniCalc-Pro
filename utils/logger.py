@@ -1,7 +1,8 @@
 import logging
 import os
 import sys
-from utils.constants import BASE_DIR
+from logging.handlers import RotatingFileHandler
+from utils.constants import BASE_DIR, LOG_MAX_BYTES, LOG_BACKUP_COUNT
 
 LOG_FILE: str = os.path.join(BASE_DIR, 'omnicalc_pro.log')
 
@@ -11,7 +12,10 @@ def setup_logger() -> logging.Logger:
     logger.setLevel(logging.DEBUG)
 
     if not logger.handlers:
-        file_handler = logging.FileHandler(LOG_FILE, mode='a', encoding='utf-8')
+        file_handler = RotatingFileHandler(
+            LOG_FILE, mode='a', maxBytes=LOG_MAX_BYTES,
+            backupCount=LOG_BACKUP_COUNT, encoding='utf-8'
+        )
         file_handler.setLevel(logging.DEBUG)
         file_fmt = logging.Formatter(
             '%(asctime)s | %(levelname)-8s | %(module)s:%(funcName)s | %(message)s',

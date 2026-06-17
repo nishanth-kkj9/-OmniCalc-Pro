@@ -28,7 +28,7 @@ ERROR_LOG = LOG_DIR / "error.log"
 class StructuredFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         data = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now().isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),

@@ -29,26 +29,30 @@ class ServiceLocator:
                     cls._instance = super().__new__(cls)
                     cls._instance._services: dict[str, Any] = {}
                     cls._instance._factories: dict[str, Callable[[], Any]] = {}
+                    cls._instance._singletons: dict[str, bool] = {}
                     cls._instance._initialized = False
         return cls._instance
 
     def register(self, name: str, factory: Callable[[], T], singleton: bool = True) -> None:
         """Register a service factory."""
         self._factories[name] = factory
-        if singleton and name in self._services:
+        self._singletons[name] = singleton
+        if name in self._services:
             del self._services[name]
 
     def get(self, name: str) -> T:
         """Get service instance, creating if needed."""
-        if name in self._services:
-            return self._services[name]
-
         if name not in self._factories:
             raise KeyError(f"Service not registered: {name}")
 
+        is_singleton = self._singletons.get(name, True)
+        if is_singleton and name in self._services:
+            return self._services[name]
+
         instance = self._factories[name]()
-        self._services[name] = instance
-        logger.debug(f"Service created: {name}")
+        if is_singleton:
+            self._services[name] = instance
+        logger.debug(f"Service created: {name} (singleton={is_singleton})")
         return instance
 
     def has(self, name: str) -> bool:

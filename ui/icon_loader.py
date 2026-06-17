@@ -6,7 +6,7 @@ from typing import Optional
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor
 from PySide6.QtCore import QSize
 from PySide6.QtSvg import QSvgRenderer
-from utils.constants import ICONS_DIR
+from utils.constants import ICONS_DIR, ICON_SIZE
 from utils.logger import get_logger
 
 logger = get_logger()
@@ -14,7 +14,7 @@ logger = get_logger()
 _icon_cache = {}
 
 
-def load_svg_icon(icon_name: str, color: Optional[str] = None, size: int = 24) -> QIcon:
+def load_svg_icon(icon_name: str, color: Optional[str] = None, size: int = ICON_SIZE) -> QIcon:
     """
     Load an SVG icon with optional color override.
     

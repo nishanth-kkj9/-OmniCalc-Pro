@@ -1,13 +1,15 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QToolButton, QLabel, QPushButton, QFrame
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QRect
 from PySide6.QtGui import QFont
+from utils.constants import (
+    COLLAPSED_WIDTH, EXPANDED_WIDTH, SIDEBAR_ANIM_DURATION,
+    SIDEBAR_BUTTON_MIN_HEIGHT, SIDEBAR_FONT_SIZE,
+    SIDEBAR_MARGIN, SIDEBAR_SPACING,
+)
 
 PAGE_NAMES = ["Dashboard", "Basic", "Scientific", "Graph", "Converter", "Programmer", "Matrix", "Statistics", "Finance", "History", "Settings"]
 
 SIDE_ICONS = ["\U0001f3e0", "\U0001f522", "\U0001f52c", "\U0001f4c8", "\U0001f504", "\U0001f4bb", "\U0001f532", "\U0001f4ca", "\U0001f4b0", "\U0001f552", "\u2699"]
-
-COLLAPSED_WIDTH = 64
-EXPANDED_WIDTH = 200
 
 
 class Sidebar(QWidget):
@@ -29,8 +31,8 @@ class Sidebar(QWidget):
         """)
 
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 12, 0, 12)
-        self.layout.setSpacing(4)
+        self.layout.setContentsMargins(0, SIDEBAR_MARGIN, 0, SIDEBAR_MARGIN)
+        self.layout.setSpacing(SIDEBAR_SPACING)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         header = QLabel("\U0001f4ca  OmniCalc")
@@ -46,11 +48,11 @@ class Sidebar(QWidget):
             btn = QToolButton()
             btn.setToolTip(name)
             btn.setText(f"  {SIDE_ICONS[i]}  {name}")
-            btn.setMinimumHeight(44)
+            btn.setMinimumHeight(SIDEBAR_BUTTON_MIN_HEIGHT)
             btn.setMaximumWidth(EXPANDED_WIDTH)
 
             f = btn.font()
-            f.setPointSize(11)
+            f.setPointSize(SIDEBAR_FONT_SIZE)
             btn.setFont(f)
 
             btn.setStyleSheet("""
@@ -100,7 +102,7 @@ class Sidebar(QWidget):
         self.animation_group.clear()
 
         anim = QPropertyAnimation(self, b"fixedWidth", self)
-        anim.setDuration(200)
+        anim.setDuration(SIDEBAR_ANIM_DURATION)
         anim.setStartValue(self.width())
         anim.setEndValue(target_width)
         anim.setEasingCurve(QEasingCurve.Type.OutCubic)

@@ -6,7 +6,11 @@ No code execution possible - only mathematical expressions.
 """
 import math
 import re
+import signal
+import threading
+from typing import Any
 
+import sympy as sp
 from sympy import SympifyError, Basic
 from sympy.parsing.sympy_parser import (
     parse_expr,
@@ -16,11 +20,9 @@ from sympy.parsing.sympy_parser import (
 )
 
 from utils.logger import get_logger
+from utils.constants import MAX_EXPR_LENGTH, MAX_RESULT_DIGITS, MAX_EXECUTION_TIME, MAX_NESTING_DEPTH
 
 logger = get_logger()
-
-MAX_EXPR_LENGTH = 500
-MAX_RESULT_DIGITS = 50
 
 SAFE_FUNCTIONS = {
     "sin", "cos", "tan", "asin", "acos", "atan",
@@ -110,7 +112,11 @@ class SafeEvaluator:
     def __init__(self, angle_mode: str = "degrees", max_length: int = MAX_EXPR_LENGTH):
         self.angle_mode = angle_mode
         self.max_length = max_length
+        self.max_time = MAX_EXECUTION_TIME
+        self.max_nesting = MAX_NESTING_DEPTH
         self._namespace = self._build_namespace()
+        self._timeout_thread = None
+        self._timed_out = False
 
     def _build_namespace(self) -> dict:
         ns = dict(SAFE_CONSTANTS)
@@ -125,6 +131,18 @@ class SafeEvaluator:
         if mode in ("degrees", "radians"):
             self.angle_mode = mode
             self._namespace = self._build_namespace()
+
+    def _check_nesting_depth(self, expr: str) -> None:
+        depth = 0
+        max_d = 0
+        for ch in expr:
+            if ch == "(":
+                depth += 1
+                max_d = max(max_d, depth)
+                if max_d > self.max_nesting:
+                    raise ValueError(f"Expression nesting exceeds limit ({self.max_nesting})")
+            elif ch == ")":
+                depth -= 1
 
     def _normalize(self, expr: str) -> str:
         if len(expr) > self.max_length:
@@ -206,9 +224,26 @@ class SafeEvaluator:
     def evaluate(self, expr: str) -> float:
         try:
             expr = self._normalize(expr)
+            self._check_nesting_depth(expr)
             self._validate_ast(expr)
 
-            result = parse_expr(expr, transformations=TRANSFORMATIONS, local_dict=self._namespace, evaluate=True)
+            self._timed_out = False
+
+            def _timeout_monitor():
+                timer = threading.Timer(self.max_time, self._set_timeout)
+                timer.daemon = True
+                timer.start()
+
+            def _run():
+                return parse_expr(expr, transformations=TRANSFORMATIONS, local_dict=self._namespace, evaluate=True)
+
+            if self.max_time > 0:
+                _timeout_monitor()
+
+            result = _run()
+
+            if self._timed_out:
+                raise TimeoutError(f"Evaluation exceeded {self.max_time}s limit")
 
             if not self._is_number_result(result):
                 raise ValueError("Result is not a number")
@@ -221,6 +256,9 @@ class SafeEvaluator:
         except SympifyError as e:
             logger.warning(f"Parse error: {expr} -> {e}")
             raise ValueError(f"Invalid expression: {e}")
+        except TimeoutError as e:
+            logger.warning(f"Timeout: {expr} -> {e}")
+            raise ValueError(str(e))
         except (ZeroDivisionError, OverflowError) as e:
             logger.warning(f"Math error: {expr} -> {e}")
             raise ValueError("Math error: division by zero or overflow")
@@ -235,6 +273,26 @@ class SafeEvaluator:
             return self.evaluate(expr)
         except ValueError as e:
             return f"Error: {e}"
+
+    # --- Consolidation from parser.py ---
+
+    def parse_expression(self, expr: str):
+        try:
+            expr = expr.replace('^', '**')
+            return sp.sympify(expr, evaluate=False)
+        except Exception as e:
+            raise ValueError(f"Error parsing expression: {e}")
+
+    def to_latex(self, expr) -> str:
+        return sp.latex(expr)
+
+    def solve(self, expr, variable: str = 'x'):
+        x = sp.Symbol(variable)
+        eq = sp.sympify(expr)
+        return sp.solve(eq, x)
+
+    def _set_timeout(self):
+        self._timed_out = True
 
 
 _default_evaluator = SafeEvaluator()

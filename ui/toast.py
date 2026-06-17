@@ -9,6 +9,11 @@ from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QRect, QPoint, Signal
 from PySide6.QtGui import QFont, QColor, QPainter, QBrush, QPen, QPixmap, QIcon
 from utils.logger import get_logger
+from utils.constants import (
+    TOAST_WIDTH, TOAST_FADE_DURATION, TOAST_SLIDE_IN_DURATION,
+    TOAST_SLIDE_OUT_DURATION, TOAST_MARGIN, TOAST_SPACING,
+    TOAST_DEFAULT_DURATION, TOAST_ICON_SIZE, TOAST_CLOSE_SIZE,
+)
 
 logger = get_logger()
 
@@ -60,7 +65,7 @@ class Toast(QWidget):
 
     closed = Signal()
 
-    def __init__(self, message: str, toast_type: ToastType = ToastType.INFO, duration: int = 3000, parent=None):
+    def __init__(self, message: str, toast_type: ToastType = ToastType.INFO, duration: int = TOAST_DEFAULT_DURATION, parent=None):
         super().__init__(parent)
         self.message = message
         self.toast_type = toast_type
@@ -77,7 +82,7 @@ class Toast(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.setFixedWidth(340)
+        self.setFixedWidth(TOAST_WIDTH)
 
         colors = TOAST_COLORS[self.toast_type]
 
@@ -96,7 +101,7 @@ class Toast(QWidget):
 
         # Icon
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(20, 20)
+        self.icon_label.setFixedSize(TOAST_ICON_SIZE, TOAST_ICON_SIZE)
         self.icon_label.setStyleSheet(f"color: {colors['icon_color']};")
         layout.addWidget(self.icon_label)
 
@@ -108,7 +113,7 @@ class Toast(QWidget):
 
         # Close button
         self.close_btn = QPushButton("✕")
-        self.close_btn.setFixedSize(20, 20)
+        self.close_btn.setFixedSize(TOAST_CLOSE_SIZE, TOAST_CLOSE_SIZE)
         self.close_btn.setStyleSheet(f"""
             QPushButton {{
                 border: none;
@@ -133,24 +138,24 @@ class Toast(QWidget):
 
     def _setup_animations(self):
         self.fade_in = QPropertyAnimation(self.opacity_effect, b"opacity")
-        self.fade_in.setDuration(200)
+        self.fade_in.setDuration(TOAST_FADE_DURATION)
         self.fade_in.setStartValue(0.0)
         self.fade_in.setEndValue(1.0)
         self.fade_in.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self.fade_out = QPropertyAnimation(self.opacity_effect, b"opacity")
-        self.fade_out.setDuration(200)
+        self.fade_out.setDuration(TOAST_FADE_DURATION)
         self.fade_out.setStartValue(1.0)
         self.fade_out.setEndValue(0.0)
         self.fade_out.setEasingCurve(QEasingCurve.Type.InCubic)
         self.fade_out.finished.connect(self._on_fade_out_finished)
 
         self.slide_in = QPropertyAnimation(self, b"pos")
-        self.slide_in.setDuration(250)
+        self.slide_in.setDuration(TOAST_SLIDE_IN_DURATION)
         self.slide_in.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self.slide_out = QPropertyAnimation(self, b"pos")
-        self.slide_out.setDuration(200)
+        self.slide_out.setDuration(TOAST_SLIDE_OUT_DURATION)
         self.slide_out.setEasingCurve(QEasingCurve.Type.InCubic)
 
     def show_at(self, pos: QPoint):
@@ -185,7 +190,7 @@ class ToastManager(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 
-    def show_toast(self, message: str, toast_type: ToastType = ToastType.INFO, duration: int = 3000):
+    def show_toast(self, message: str, toast_type: ToastType = ToastType.INFO, duration: int = TOAST_DEFAULT_DURATION):
         toast = Toast(message, toast_type, duration, self)
         toast.closed.connect(lambda t=toast: self._on_toast_closed(t))
         self.toasts.append(toast)
@@ -202,8 +207,8 @@ class ToastManager(QWidget):
             return
 
         parent_rect = self.parent().rect()
-        margin = 20
-        spacing = 8
+        margin = TOAST_MARGIN
+        spacing = TOAST_SPACING
         y = parent_rect.height() - margin
 
         for toast in reversed(self.toasts):
@@ -225,7 +230,7 @@ def get_toast_manager(parent=None) -> ToastManager:
     return parent._toast_manager
 
 
-def show_toast(parent, message: str, toast_type: ToastType = ToastType.INFO, duration: int = 3000):
+def show_toast(parent, message: str, toast_type: ToastType = ToastType.INFO, duration: int = TOAST_DEFAULT_DURATION):
     """Convenience function to show a toast notification."""
     manager = get_toast_manager(parent)
     return manager.show_toast(message, toast_type, duration)

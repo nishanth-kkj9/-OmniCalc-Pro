@@ -1,21 +1,16 @@
-# Expression parser logic
-import sympy as sp
+"""Expression parser - re-exports from SafeEvaluator for backward compatibility."""
+from core.safe_evaluator import _default_evaluator as _evaluator
+
 
 class MathParser:
     @staticmethod
     def parse_expression(expr):
-        try:
-            expr = expr.replace('^', '**')
-            return sp.sympify(expr, evaluate=False)
-        except Exception as e:
-            raise ValueError(f"Error parsing expression: {e}")
+        return _evaluator.parse_expression(expr)
 
     @staticmethod
     def to_latex(expr):
-        return sp.latex(expr)
+        return _evaluator.to_latex(expr)
 
     @staticmethod
     def solve_for_variable(expr, variable='x'):
-        x = sp.Symbol(variable)
-        eq = sp.sympify(expr)
-        return sp.solve(eq, x)
+        return _evaluator.solve(expr, variable)
